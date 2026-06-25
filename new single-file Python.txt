@@ -1,0 +1,101 @@
+Here is a unified, single-file Python script that handles all three file types based on the file extension. It includes a helper function to automatically detect the extension and route it to the correct merging logic.
+
+Make sure you have the required libraries installed: `pip install python-docx pandas openpyxl python-pptx`
+
+```python
+import os
+import pandas as pd
+from docx import Document
+from pptx import Presentation
+
+def merge_word_docs(file_list, output_filename):
+    """Merges multiple .docx files into one."""
+    base_doc = Document(file_list[0])
+    for file in file_list[1:]:
+        if os.path.exists(file):
+            base_doc.add_page_break()
+            doc_to_append = Document(file)
+            for element in doc_to_append.element.body:
+                base_doc.element.body.append(element)
+    base_doc.save(output_filename)
+
+def merge_excel_files(file_list, output_filename):
+    """Merges multiple Excel files into a single workbook with multiple tabs."""
+    with pd.ExcelWriter(output_filename, engine='openpyxl') as writer:
+        for index, file in enumerate(file_list):
+            excel_file = pd.ExcelFile(file)
+            for sheet_name in excel_file.sheet_names:
+                df = pd.read_excel(file, sheet_name=sheet_name)
+                # Keep sheet names unique and under Excel's 31-character limit
+                unique_sheet_name = f"File{index+1}_{sheet_name}"[:31]
+                df.to_excel(writer, sheet_name=unique_sheet_name, index=False)
+
+def merge_powerpoint_files(file_list, output_filename):
+    """Merges multiple .pptx files into one (copies text and basic images)."""
+    prs1 = Presentation(file_list[0])
+    for file in file_list[1:]:
+        prs2 = Presentation(file)
+        for slide in prs2.slides:
+            blank_layout = prs1.slide_layouts[6] 
+            new_slide = prs1.slides.add_slide(blank_layout)
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    new_shape = new_slide.shapes.add_textbox(shape.left, shape.top, shape.width, shape.height)
+                    new_shape.text_frame.text = shape.text_frame.text
+                elif shape.shape_type == 13: # Image shape type
+                    with open("temp_img.png", "wb") as f:
+                        f.write(shape.image.blob)
+                    new_slide.shapes.add_picture("temp_img.png", shape.left, shape.top, shape.width, shape.height)
+    prs1.save(output_filename)
+    if os.path.exists("temp_img.png"):
+        os.remove("temp_img.png")
+
+def merge_files(file_list, output_filename):
+    """Master function that detects file type and runs the correct merger."""
+    if not file_list:
+        print("Error: The file list is empty.")
+        return
+
+    # Check extension of the first file to determine the type
+    _, ext = os.path.splitext(file_list[0].lower())
+    
+    # Ensure all files share the same extension type
+    if not all(f.lower().endswith(ext) for f in file_list):
+        print("Error: All files in the list must be of the same type (.docx, .xlsx, or .pptx).")
+        return
+
+    print(f"Merging {len(file_list)} files of type '{ext}'...")
+    
+    try:
+        if ext == '.docx':
+            merge_word_docs(file_list, output_filename)
+        elif ext == '.xlsx':
+            merge_excel_files(file_list, output_filename)
+        elif ext == '.pptx':
+            merge_powerpoint_files(file_list, output_filename)
+        else:
+            print(f"Unsupported file extension: {ext}")
+            return
+        print(f"Success! Merged file saved as: {output_filename}")
+    except Exception as e:
+        print(f"An error occurred during merging: {e}")
+
+# ==========================================
+# EXAMPLE USAGE
+# Un-comment the block you want to test:
+# ==========================================
+if __name__ == "__main__":
+    # Example 1: Word
+    # word_files = ['doc1.docx', 'doc2.docx', 'doc3.docx']
+    # merge_files(word_files, 'combined_document.docx')
+
+    # Example 2: Excel
+    # excel_files = ['january_sales.xlsx', 'february_sales.xlsx']
+    # merge_files(excel_files, 'combined_sales.xlsx')
+
+    # Example 3: PowerPoint
+    # ppt_files = ['intro.pptx', 'body.pptx', 'conclusion.pptx']
+    # merge_files(ppt_files, 'final_presentation.pptx')
+    pass
+
+```
