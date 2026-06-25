@@ -1,0 +1,143 @@
+
+### Prerequisites
+
+First, you'll need to install the required libraries. Run this in your terminal:
+
+```bash
+pip install python-docx pandas openpyxl python-pptx
+
+```
+
+---
+
+### 1. Merging Word Documents (`.docx`)
+
+This script reads the body of subsequent documents and appends them to the first document, adding a page break between them.
+
+```python
+import os
+from docx import Document
+
+def merge_word_docs(file_list, output_filename):
+    """Merges multiple .docx files into one."""
+    if not file_list:
+        print("No files provided.")
+        return
+
+    # Start with the first document as the base
+    base_doc = Document(file_list[0])
+    
+    for file in file_list[1:]:
+        if os.path.exists(file):
+            # Add a page break before appending the next file
+            base_doc.add_page_break()
+            
+            # Open the document to append
+            doc_to_append = Document(file)
+            for element in doc_to_append.element.body:
+                base_doc.element.body.append(element)
+        else:
+            print(file_list, f"File not found: {file}")
+
+    base_doc.save(output_filename)
+    print(f"Successfully merged Word files into: {output_filename}")
+
+# Example Usage:
+# merge_word_docs(['doc1.docx', 'doc2.docx'], 'merged_output.docx')
+
+```
+
+---
+
+### 2. Merging Excel Files (`.xlsx`)
+
+Depending on what you mean by "merging" Excel files, you either want to combine multiple sheets into one **or** keep them as separate tabs in a single workbook.
+
+#### Option A: Combine multiple files into separate tabs (Sheets)
+
+```python
+import pandas as pd
+
+def merge_excel_to_sheets(file_list, output_filename):
+    """Merges multiple Excel files into a single workbook with multiple tabs."""
+    with pd.ExcelWriter(output_filename, engine='openpyxl') as writer:
+        for index, file in enumerate(file_list):
+            # Read all sheets from the current Excel file
+            excel_file = pd.ExcelFile(file)
+            for sheet_name in excel_file.sheet_names:
+                df = pd.read_excel(file, sheet_name=sheet_name)
+                # Name the tab using the file name + sheet name to avoid duplicates
+                unique_sheet_name = f"File{index+1}_{sheet_name}"[:31] # Max 31 chars for Excel
+                df.to_excel(writer, sheet_name=unique_sheet_name, index=False)
+                
+    print(f"Successfully merged Excel files into sheets: {output_filename}")
+
+# Example Usage:
+# merge_excel_to_sheets(['data1.xlsx', 'data2.xlsx'], 'merged_sheets.xlsx')
+
+```
+
+#### Option B: Stack rows of matching sheets together
+
+```python
+import pandas as pd
+
+def merge_excel_by_stacking(file_list, output_filename):
+    """Stacks data from multiple Excel files vertically (assumes identical columns)."""
+    all_data = []
+    for file in file_list:
+        df = pd.read_excel(file)
+        all_data.append(df)
+    
+    # Combine everything into one dataframe
+    combined_df = pd.concat(all_data, ignore_index=True)
+    combined_df.to_excel(output_filename, index=False)
+    print(f"Successfully stacked Excel files into: {output_filename}")
+
+```
+
+---
+
+### 3. Merging PowerPoint Presentations (`.pptx`)
+
+PowerPoint merging requires copying the slide layouts and shapes from one presentation to another.
+
+```python
+from pptx import Presentation
+
+def merge_presentations(file_list, output_filename):
+    """Merges multiple .pptx files into one."""
+    if not file_list:
+        return
+
+    # Load the first presentation as the base
+    prs1 = Presentation(file_list[0])
+    
+    for file in file_list[1:]:
+        prs2 = Presentation(file)
+        
+        # Iterate through slides in the second presentation
+        for slide in prs2.slides:
+            # Create a blank slide in the base presentation using its blank layout
+            blank_layout = prs1.slide_layouts[6] 
+            new_slide = prs1.slides.add_slide(blank_layout)
+            
+            # Copy shapes (text, images, etc.) from the source slide to the new slide
+            for shape in slide.shapes:
+                # Note: This is a basic copy. Complex formatting/animations 
+                # might require deeper XML manipulation.
+                if shape.has_text_frame:
+                    new_shape = new_slide.shapes.add_textbox(shape.left, shape.top, shape.width, shape.height)
+                    new_shape.text_frame.text = shape.text_frame.text
+                elif shape.shape_type == 13: # Picture type
+                    # Extract image and copy it
+                    with open("temp_img.png", "wb") as f:
+                        f.write(shape.image.blob)
+                    new_slide.shapes.add_picture("temp_img.png", shape.left, shape.top, shape.width, shape.height)
+                    
+    prs1.save(output_filename)
+    print(f"Successfully merged PowerPoint files into: {output_filename}")
+
+# Example Usage:
+# merge_presentations(['deck1.pptx', 'deck2.pptx'], 'merged_deck.pptx')
+
